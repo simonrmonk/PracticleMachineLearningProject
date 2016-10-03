@@ -1,0 +1,105 @@
+---
+title: "Practicle Machine Learning"
+author: "Simon Monk"
+date: "October 2, 2016"
+output: md_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+Load the required R packages and set seed to ensure reproducability of work.
+
+```{r, results='hide', message = FALSE, warning=FALSE, echo = TRUE}
+library(caret)
+library(rattle)
+library(rpart)
+library(randomForest)
+library(doParallel)
+set.seed(213)
+```
+
+Download and store pre-processed training and test data sets.
+
+```{r, message = FALSE, warning=FALSE, echo = TRUE}
+  trainingDataSet <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"))
+  validationDataSet <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+```
+
+Parition the training set into a training set and a test set to estimate the out-of-sample error
+
+```{r, message = FALSE, warning=FALSE, echo = TRUE}
+  inTrainPartition <- createDataPartition(y=trainingDataSet$classe, p=0.6, list=FALSE)
+  training <- trainingDataSet[inTrainPartition, ]
+  testing <- trainingDataSet[-inTrainPartition, ]
+```
+
+Replace NA values with zero in the training, testing, and validation test sets.
+
+```{r, message = FALSE, warning=FALSE, echo = TRUE}
+  training[is.na(training)] <- 0
+  testing[is.na(testing)] <- 0
+  validationDataSet[is.na(validationDataSet)] <- 0
+```
+
+Identify variables with near zero variance using the nearZeroVar function on the training data set. Remove these identified variables from each of the three data sets.
+
+```{r, message = FALSE, warning=FALSE, echo = TRUE}
+  training.nearZero <- nearZeroVar(training, saveMetrics=TRUE)
+  myTrainingSet <- training[!training.nearZero$nzv]
+  myTestingSet <- testing[!training.nearZero$nzv]
+  myValidationSet <- validationDataSet[!training.nearZero$nzv]
+```
+
+Remove the index (first) column from each of the datasets as this may confuse our model.
+
+```{r, message = FALSE, warning=FALSE, echo = TRUE}
+  myTrainingSet <- myTrainingSet[c(-1)]
+  myTestingSet <- myTestingSet[c(-1)]
+  myValidationSet <- myValidationSet[c(-1)]
+```
+
+We now have 58 of the original 160 variables left in each of our datasets:
+
+```{r, message = FALSE, warning=FALSE, echo = TRUE}
+  dim(myTrainingSet)
+  dim(myTestingSet)
+  dim(myValidationSet)
+```
+
+Let's try fitting and plotting a classication tree model:
+
+```{r, message = FALSE, warning=FALSE, echo = TRUE}
+  mod.ClassificationTree <- train(classe ~ ., data=myTrainingSet, method="rpart")
+  fancyRpartPlot(mod.ClassificationTree$finalModel)
+```
+
+Let's estimate our out-of-sample accuracy by predicting with the classification tree on the test data set and comparing the actual test set classifications. We can see that this gives us an out-of-sample estimate of accuracy of approximately 50%.
+
+```{r, message = FALSE, warning=FALSE, echo = TRUE}
+  pred.classificationTree <- predict(mod.ClassificationTree, myTestingSet)
+  confusionMatrix(pred.classificationTree, myTestingSet$classe)$overall[1]
+```
+
+With such a low estimate of accuracy, lets try a new model: Random Forest. First, lets build our model on the data. I've included the registerDoParallel() function to improve performance:
+
+```{r, message = FALSE, warning=FALSE, echo = TRUE}
+  mod.rf <- train(classe ~ ., data=myTrainingSet, method="rf", ntree = 10)
+```
+
+Our new Random Forest model gives us an estimated out-of-sample accuracy of approximately 99.8%:
+
+```{r, message = FALSE, warning=FALSE, echo = TRUE}
+  pred.rf <- predict(mod.rf, myTestingSet)
+  confusionMatrix(pred.rf, myTestingSet$classe)$overall[1]
+```
+
+With such high estimated accuracy, lets predict on our validation set. See predictions below:
+
+```{r, message = FALSE, warning=FALSE, echo = TRUE}
+  pred.rf.validation <- predict(mod.rf, myValidationSet)
+  pred.rf.validation
+```
+
+
